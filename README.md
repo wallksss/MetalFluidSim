@@ -29,9 +29,9 @@ FluidSim is a 2D fluid dynamics simulator that allows real-time interaction by c
 
 ## Screenshots
 
-| Density | Velocity | Pressure | Divergence |
-|---------|----------|----------|------------|
-| ![Density](images/density.png) | ![Velocity](images/velocity.png) | ![Pressure](images/pressure.png) | ![Divergence](images/divergence.png) |
+| Density | Velocity | Pressure | Divergence | Vorticity |
+|---------|----------|----------|------------|-----------|
+| ![Density](images/density.png) | ![Velocity](images/velocity.png) | ![Pressure](images/pressure.png) | ![Divergence](images/divergence.png) | ![Vorticity](images/vorticity.png) |
 
 ## License
 

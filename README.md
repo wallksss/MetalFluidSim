@@ -19,6 +19,7 @@ FluidSim is a 2D fluid dynamics simulator that allows real-time interaction by c
   - **Velocity** — velocity field (RG mapped to direction and magnitude)
   - **Pressure** — pressure field (grayscale: negative=blue, positive=red)
   - **Divergence** — field divergence (green/magenta for numerical debug)
+  - **Vorticity** — vorticity field (RG mapped to direction and magnitude)
 
 ## Inspiration & References
 

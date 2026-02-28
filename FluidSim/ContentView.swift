@@ -33,34 +33,34 @@
 import SwiftUI
 
 struct ContentView: View {
-  @State private var displayMode: DisplayMode = .density
-
-  var body: some View {
-    ZStack(alignment: .topTrailing) {
-      MetalView(displayMode: $displayMode)
-        .ignoresSafeArea()
-
-      VStack(alignment: .leading, spacing: 5) {
-        Text("Display Mode")
-          .font(.headline)
-          .foregroundColor(.white)
-
-        Picker("", selection: $displayMode) {
-          ForEach(DisplayMode.allCases) { mode in
-            Text(mode.title).tag(mode)
-          }
+    @State private var displayMode: DisplayMode = .density
+    
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            MetalView(displayMode: $displayMode)
+                .ignoresSafeArea()
+            
+            VStack(alignment: .leading, spacing: 5) {
+            Text("Display Mode")
+                .font(.headline)
+                .foregroundColor(.white)
+            
+            Picker("", selection: $displayMode) {
+                ForEach(DisplayMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-      }
-      .padding()
-      .background(.regularMaterial)
-      .cornerRadius(10)
-      .padding()
+        .padding()
+        .background(.regularMaterial)
+        .cornerRadius(10)
+        .padding()
     }
-  }
+}
 }
 
 #Preview {
-  ContentView()
+ContentView()
 }

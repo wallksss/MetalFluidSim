@@ -38,6 +38,7 @@ enum DisplayMode: Int, CaseIterable, Identifiable {
   case velocity = 1
   case pressure = 2
   case divergence = 3
+  case vorticity = 4
 
   var id: Int { rawValue }
 
@@ -47,6 +48,7 @@ enum DisplayMode: Int, CaseIterable, Identifiable {
     case .velocity: return "Velocity"
     case .pressure: return "Pressure"
     case .divergence: return "Divergence"
+    case .vorticity: return "Vorticity"
     }
   }
 }

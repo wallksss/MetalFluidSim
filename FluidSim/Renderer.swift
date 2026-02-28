@@ -41,6 +41,7 @@ class Renderer: NSObject {
   var velocityPipelineState: MTLRenderPipelineState!
   var pressurePipelineState: MTLRenderPipelineState!
   var divergencePipelineState: MTLRenderPipelineState!
+  var vorticityPipelineState: MTLRenderPipelineState!
 
   // Ping-pong textures
   var velocityTex: MTLTexture!
@@ -49,6 +50,7 @@ class Renderer: NSObject {
   var densityPrevTex: MTLTexture!
   var pressureTex: MTLTexture!
   var divergenceTex: MTLTexture!
+  var vorticityTex: MTLTexture!
 
   // Compute Pipelines
   var advectState: MTLComputePipelineState!
@@ -58,8 +60,10 @@ class Renderer: NSObject {
   var boundaryState: MTLComputePipelineState!
   var splatState: MTLComputePipelineState!
   var dissipateState: MTLComputePipelineState!
+  var vorticityState: MTLComputePipelineState!
+  var vorticityForceState: MTLComputePipelineState!
 
-  let gridSize = 1024
+  let gridSize = 128
 
   var interactPoints: [CGPoint] = []
   var displayMode: DisplayMode = .density
@@ -79,24 +83,26 @@ class Renderer: NSObject {
     super.init()
 
     func makeTexture(format: MTLPixelFormat) -> MTLTexture {
-      let desc = MTLTextureDescriptor.texture2DDescriptor(
-        pixelFormat: format,
-        width: gridSize,
-        height: gridSize,
-        mipmapped: false
-      )
+      let desc = MTLTextureDescriptor()
+      desc.textureType = .type3D
+      desc.pixelFormat = format
+      desc.width = gridSize
+      desc.height = gridSize
+      desc.depth = gridSize
+      desc.mipmapLevelCount = 1
       desc.usage = [.shaderRead, .shaderWrite]
       desc.storageMode = .private
       return device.makeTexture(descriptor: desc)!
     }
 
-    velocityTex     = makeTexture(format: .rg32Float)
-    velocityPrevTex = makeTexture(format: .rg32Float)
+    velocityTex     = makeTexture(format: .rgba32Float)
+    velocityPrevTex = makeTexture(format: .rgba32Float)
     densityTex      = makeTexture(format: .r32Float)
     densityPrevTex  = makeTexture(format: .r32Float)
     pressureTex     = makeTexture(format: .r32Float)
     divergenceTex   = makeTexture(format: .r32Float)
-
+    vorticityTex    = makeTexture(format: .rgba32Float)
+  
     func makeComputePipeline(name: String) -> MTLComputePipelineState {
       let function = library.makeFunction(name: name)!
       return try! device.makeComputePipelineState(function: function)
@@ -109,6 +115,8 @@ class Renderer: NSObject {
     boundaryState  = makeComputePipeline(name: "boundary_kernel")
     splatState     = makeComputePipeline(name: "splat_kernel")
     dissipateState = makeComputePipeline(name: "dissipate_kernel")
+    vorticityState = makeComputePipeline(name: "vorticity_kernel")
+    vorticityForceState = makeComputePipeline(name: "vorticity_force_kernel")
 
     func makeRenderPipeline(fragmentName: String) -> MTLRenderPipelineState {
       let pipelineDescriptor = MTLRenderPipelineDescriptor()
@@ -122,6 +130,7 @@ class Renderer: NSObject {
     velocityPipelineState   = makeRenderPipeline(fragmentName: "fragment_velocity")
     pressurePipelineState   = makeRenderPipeline(fragmentName: "fragment_pressure")
     divergencePipelineState = makeRenderPipeline(fragmentName: "fragment_divergence")
+    vorticityPipelineState  = makeRenderPipeline(fragmentName: "fragment_vorticity")
 
     metalView.clearColor = MTLClearColor(red: 0.05, green: 0.05, blue: 0.05, alpha: 1)
     metalView.delegate = self
@@ -144,8 +153,8 @@ extension Renderer: MTKViewDelegate {
       for (i, tex) in textures.enumerated() {
         computeEncoder.setTexture(tex, index: i)
       }
-      let tgSize = MTLSize(width: 16, height: 16, depth: 1)
-      let gridSize = MTLSize(width: self.gridSize, height: self.gridSize, depth: 1)
+      let tgSize = MTLSize(width: 8, height: 8, depth: 8)
+      let gridSize = MTLSize(width: self.gridSize, height: self.gridSize, depth: self.gridSize)
       computeEncoder.dispatchThreads(gridSize, threadsPerThreadgroup: tgSize)
     }
 
@@ -154,25 +163,26 @@ extension Renderer: MTKViewDelegate {
     var halfrdx: Float  = 0.5
     var scaleNeg: Float = -1.0
     var scalePos: Float = 1.0
-    var decay: Float    = 0.99
-    var radius: Float   = 300.0
+    var decay: Float    = 0.999
+    var radius: Float   = 20
+    var epsilon: Float  = 0.1 // Vorticity scale
 
     // 1. Process Interactions
     if !interactPoints.isEmpty {
       for pt in interactPoints {
-        var point = SIMD2<Float>(Float(pt.x), Float(pt.y))
+        var point = SIMD3<Float>(Float(pt.x), Float(pt.y), Float(gridSize) / 2.0)
         var colorDens = SIMD4<Float>(400.0, 0, 0, 0)
 
         // Splat Density
-        computeEncoder.setBytes(&point, length: MemoryLayout<SIMD2<Float>>.size, index: 0)
+        computeEncoder.setBytes(&point, length: MemoryLayout<SIMD3<Float>>.size, index: 0)
         computeEncoder.setBytes(&colorDens, length: MemoryLayout<SIMD4<Float>>.size, index: 1)
         computeEncoder.setBytes(&radius, length: MemoryLayout<Float>.size, index: 2)
         dispatch(splatState, textures: [densityTex, densityPrevTex])
         Swift.swap(&densityTex, &densityPrevTex)
 
         // Splat Velocity
-        var colorVel = SIMD4<Float>(Float.random(in: -40...40), -100.0, 0, 0)
-        computeEncoder.setBytes(&point, length: MemoryLayout<SIMD2<Float>>.size, index: 0)
+        var colorVel = SIMD4<Float>(Float.random(in: -40...40), -100.0, 0.0, 0.0)
+        computeEncoder.setBytes(&point, length: MemoryLayout<SIMD3<Float>>.size, index: 0)
         computeEncoder.setBytes(&colorVel, length: MemoryLayout<SIMD4<Float>>.size, index: 1)
         computeEncoder.setBytes(&radius, length: MemoryLayout<Float>.size, index: 2)
         dispatch(splatState, textures: [velocityTex, velocityPrevTex])
@@ -196,9 +206,19 @@ extension Renderer: MTKViewDelegate {
     computeEncoder.setBytes(&halfrdx, length: MemoryLayout<Float>.size, index: 0)
     dispatch(divergenceState, textures: [velocityTex, divergenceTex])
 
+    // 3.1 Vorticity Confinement
+    computeEncoder.setBytes(&halfrdx, length: MemoryLayout<Float>.size, index: 0)
+    dispatch(vorticityState, textures: [velocityTex, vorticityTex])
+
+    computeEncoder.setBytes(&halfrdx, length: MemoryLayout<Float>.size, index: 0)
+    computeEncoder.setBytes(&dt, length: MemoryLayout<Float>.size, index: 1)
+    computeEncoder.setBytes(&epsilon, length: MemoryLayout<Float>.size, index: 2)
+    dispatch(vorticityForceState, textures: [vorticityTex, velocityTex, velocityPrevTex])
+    Swift.swap(&velocityTex, &velocityPrevTex)
+
     // 4. Pressure Projection (Jacobi)
     var alpha: Float = -1.0
-    var rBeta: Float = 0.25
+    var rBeta: Float = 1.0 / 6.0
     for _ in 0..<30 {
       computeEncoder.setBytes(&alpha, length: MemoryLayout<Float>.size, index: 0)
       computeEncoder.setBytes(&rBeta, length: MemoryLayout<Float>.size, index: 1)
@@ -253,8 +273,12 @@ extension Renderer: MTKViewDelegate {
       case .divergence:
         renderEncoder.setRenderPipelineState(divergencePipelineState)
         renderEncoder.setFragmentTexture(divergenceTex, index: 0)
+      case .vorticity:
+        renderEncoder.setRenderPipelineState(vorticityPipelineState)
+        renderEncoder.setFragmentTexture(vorticityTex, index: 0)
       }
-
+      var slice: Float = 0.5
+      renderEncoder.setFragmentBytes(&slice, length: MemoryLayout<Float>.size, index: 0)
       renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
       renderEncoder.endEncoding()
     }
